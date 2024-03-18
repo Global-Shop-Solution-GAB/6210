@@ -1,0 +1,51 @@
+Program.Sub.Preflight.Start
+Program.External.Include.Library("500030.lib")
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'Author: BixRB
+'Date: 6 Dec 2020
+'GCG_6210_Remove_Misc_Seq.g2u
+'Germfree Laboratories Inc.
+'Remove Misc Labor Sequence 996000 on SFDC Work Order Open Screen Post Save Hook
+'Addition - fires from serialization open screen
+V.Local.sSQL.Declare
+
+F.Intrinsic.Control.If(V.Caller.Hook,!=,16800,and,V.Caller.Hook,!=,31825)
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.If(V.Caller.Hook,=,31825)
+	F.Intrinsic.String.Build("select if(B.DATE_START = '000000', '{1}', B.DATE_START) as StartDate, B.DATE_DUE as DueDate, A.JOB as WONum, A.SUFFIX as Suffix, '' as Sequence, 'B' as Schedule from V_JOB_OPERATIONS A left join JOB_HEADER B on A.JOB = B.JOB and A.SUFFIX = B.SUFFIX where A.JOB = '{0}' and A.SEQ = '996000';",V.Passed.009000,V.Ambient.Date.FormatYYMMDD,V.Local.sSQL)
+F.Intrinsic.Control.Else
+	F.Intrinsic.String.Build("select JOB, SUFFIX from V_JOB_OPERATIONS where JOB = '{0}' and SUFFIX = '{1}' and SEQ = '996000';",V.Passed.009000,V.Passed.009001,V.Local.sSQL)
+F.Intrinsic.Control.EndIf
+F.ODBC.Connection!con.OpenCompanyConnection
+F.Data.DataTable.CreateFromSQL("dtJobs","con",V.Local.sSQL,True)
+F.Intrinsic.Control.If(V.DataTable.dtJobs.RowCount,=,0)
+	'No seq to delete
+	F.Data.DataTable.Close("dtJobs")
+	F.ODBC.Connection!con.Close
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.If(V.Caller.Hook,=,31825)
+	F.Intrinsic.String.Build("delete from JOB_OPERATIONS where JOB = '{0}' and SEQ = '996000';",V.Passed.009000,V.Local.sSQL)
+F.Intrinsic.Control.Else
+	F.Intrinsic.String.Build("delete from JOB_OPERATIONS where JOB = '{0}' and SUFFIX = '{1}' and SEQ = '996000';",V.Passed.009000,V.Passed.009001,V.Local.sSQL)
+F.Intrinsic.Control.EndIf
+F.ODBC.Connection!con.Execute(V.Local.sSQL)
+F.ODBC.Connection!con.Close
+
+'I have realized this isn't needed for removing Misc. Seqs. They don't even hit the APS tables when scheduled
+'F.Intrinsic.Control.If(V.Caller.Hook,=,31825)
+'	F.Intrinsic.Control.CallSub(ScheduleBOMWO,"Job",V.Passed.009000.Trim)
+'F.Intrinsic.Control.EndIf
+
+F.Data.DataTable.Close("dtJobs")
+Program.Sub.Main.End
+
+Program.Sub.ScheduleBOMWO.Start
+F.Data.DataTable.Merge("dtJobs","500030",True,2)
+
+F.Intrinsic.Control.CallSub(500030Sync)
+Program.Sub.ScheduleBOMWO.End
